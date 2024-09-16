@@ -14,6 +14,7 @@ effects = [0.5, 1.0, 1.5]  # Effects: Fade, Flash, etc.
 # Parameters for atmospheric lighting
 atmospheric_lighting_duration = 4  # Duration of atmospheric lighting effects (in beats)
 atmospheric_lighting_count = 5  # Number of atmospheric lighting events
+gap_threshold = 1.5  # Minimum gap between notes (in beats) to insert atmospheric lighting
 
 # Function to generate atmospheric lighting events
 def generate_atmospheric_lighting_events(start_time, duration, types, colors):
@@ -61,6 +62,18 @@ def generate_lighting_events_from_notes(note_times, max_effect_duration, types, 
     
     return events
 
+# Function to add atmospheric lighting effects in long gaps between notes
+def add_atmospheric_events_in_gaps(note_times, gap_threshold, types, colors):
+    events = []
+    for i in range(1, len(note_times)):
+        gap = note_times[i] - note_times[i - 1]
+        if gap > gap_threshold:
+            # Add atmospheric lighting during the gap
+            start_time = note_times[i - 1] + gap_threshold / 2  # Place the event in the middle of the gap
+            gap_events = generate_atmospheric_lighting_events(start_time, gap - gap_threshold, types, colors)
+            events.extend(gap_events)
+    return events
+
 # Function to extract note times from the difficulty .dat file
 def extract_note_times_from_dat(file_path):
     with open(file_path, 'r') as f:
@@ -87,19 +100,23 @@ def add_lighting_to_dat_file(file_path, note_times):
     # Get the start time for the atmospheric lighting events
     start_time = 0  # Start at the beginning of the song
 
-    # Generate and add atmospheric lighting events
-    atmospheric_events = generate_atmospheric_lighting_events(start_time, atmospheric_lighting_duration, lighting_types, colors)
-    map_data["_events"].extend(atmospheric_events)
+    # Generate and add atmospheric lighting events at the start of the song
+    atmospheric_events_start = generate_atmospheric_lighting_events(start_time, atmospheric_lighting_duration, lighting_types, colors)
+    map_data["_events"].extend(atmospheric_events_start)
     
     # Generate lighting events from note timings
     lighting_events = generate_lighting_events_from_notes(note_times, max_effect_duration, lighting_types, colors)
     map_data["_events"].extend(lighting_events)
 
+    # Add atmospheric lighting events in long note gaps
+    atmospheric_events_in_gaps = add_atmospheric_events_in_gaps(note_times, gap_threshold, lighting_types, colors)
+    map_data["_events"].extend(atmospheric_events_in_gaps)
+
     # Save the updated .dat file
     with open(file_path, 'w') as f:
         json.dump(map_data, f, indent=4)
 
-    print(f"Existing lighting events cleared and new music-synced events with atmospheric intro added to {file_path}")
+    print(f"Existing lighting events cleared and new music-synced events with atmospheric intro and gap lighting added to {file_path}")
 
 # Main function to iterate over all song folders and process .dat files
 def process_all_songs(root_folder):
@@ -125,4 +142,4 @@ def process_all_songs(root_folder):
 # Run the script on all song folders in the root directory
 process_all_songs(root_folder)
 
-print("Music-synced dynamic lighting events with atmospheric intro added to all available song difficulty files in the root folder!")
+print("Music-synced dynamic lighting events with atmospheric intro and gap lighting added to all available song difficulty files in the root folder!")
