@@ -1,75 +1,82 @@
 import json
 import os
 import random
-import librosa  # Library for audio analysis
-import numpy as np
 
 # Define the root folder (the folder containing all song subfolders)
 root_folder = "."  # Change "." to the path of your root folder if not running in the same directory
 
 # Configurable parameters for lighting dynamics
-max_effect_duration = 1.5  # Max duration for lighting effects (in beats)
-min_effect_duration = 0.1  # Min duration to ensure lights don't get stuck
+max_effect_duration = 2  # Maximum duration for lighting effects (in beats)
 lighting_types = [0, 1, 2, 3, 4]  # Light types: Back Laser, Ring Light, etc.
-colors = [1, 2, 3, 4, 5]  # Colors: Different intensities or colors
-effects = [0.5, 1.0]  # Effects: Fade, Flash
+colors = [1, 2, 3, 4, 5]  # Example colors: Different intensities or colors
+effects = [0.5, 1.0, 1.5]  # Effects: Fade, Flash, etc.
 
-# Function to generate lighting events based on beat timings
-def generate_lighting_events_from_beats(beat_times, max_effect_duration, min_effect_duration, types, colors):
+# Parameters for atmospheric lighting
+atmospheric_lighting_duration = 4  # Duration of atmospheric lighting effects (in beats)
+atmospheric_lighting_count = 5  # Number of atmospheric lighting events
+
+# Function to generate atmospheric lighting events
+def generate_atmospheric_lighting_events(start_time, duration, types, colors):
     events = []
-    
-    previous_time = -1  # Track the previous event time to avoid overlapping
-
-    for time in beat_times:
-        if previous_time != -1 and time - previous_time < min_effect_duration:
-            # Skip event if it's too close to the previous one
-            continue
-        
-        # Randomly select lighting type and color
+    for _ in range(atmospheric_lighting_count):
+        # Randomly select timing, type, and color for atmospheric effects
+        time = start_time + random.uniform(0, duration)
         light_type = random.choice(types)
         color = random.choice(colors)
-
-        # Create the "on" event
-        event_on = {
+        effect_duration = random.uniform(0.5, 1.5)  # Duration of the atmospheric lighting effect
+        
+        # Create the event
+        event = {
             "_time": time,
             "_type": light_type,
-            "_value": color,
-            # Remove "_floatValue" to avoid potential conflicts
+            "_value": color
         }
-        
-        events.append(event_on)
-
-        # Create a "reset" or "off" event to ensure lights turn off
-        reset_time = time + random.uniform(min_effect_duration, max_effect_duration)
-        event_off = {
-            "_time": reset_time,
-            "_type": light_type,
-            "_value": 0  # Value 0 to turn off the light
-        }
-        
-        events.append(event_off)
-        previous_time = time
+        # Add the event to the list
+        events.append(event)
     
     return events
 
-# Function to extract beat times from the song.ogg or song.egg file using librosa
-def extract_beats_from_audio(audio_file):
-    # Load the audio file
-    y, sr = librosa.load(audio_file, sr=None)
-
-    # Get the tempo (BPM) and beat timings
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+# Function to generate lighting events based on note times
+def generate_lighting_events_from_notes(note_times, max_effect_duration, types, colors):
+    events = []
     
-    # Convert the beat frames to time (in seconds)
-    beat_times = librosa.frames_to_time(beat_frames, sr=sr)
-    
-    print(f"Detected BPM: {tempo}")
-    print(f"Detected Beat Times: {beat_times}")
+    for time in note_times:
+        # Randomly select lighting type and color
+        light_type = random.choice(types)
+        color = random.choice(colors)
+        effect_duration = random.uniform(0.1, max_effect_duration)  # Random duration between 0.1 and max_effect_duration
 
-    return beat_times
+        # Ensure the effect does not extend beyond the end time
+        if time + effect_duration > max(note_times):
+            effect_duration = max(note_times) - time
+
+        # Create the event
+        event = {
+            "_time": time,
+            "_type": light_type,
+            "_value": color
+        }
+        # Add the event to the list
+        events.append(event)
+    
+    return events
+
+# Function to extract note times from the difficulty .dat file
+def extract_note_times_from_dat(file_path):
+    with open(file_path, 'r') as f:
+        map_data = json.load(f)
+    
+    note_times = [note["_time"] for note in map_data.get("_notes", [])]
+    
+    print(f"Extracted Note Times: {note_times}")
+    return note_times
 
 # Function to add lighting events to a specific .dat file
-def add_lighting_to_dat_file(file_path, beat_times):
+def add_lighting_to_dat_file(file_path, note_times):
+    if not note_times:
+        print(f"No note times found in {file_path}, skipping...")
+        return
+
     # Load the existing .dat file
     with open(file_path, 'r') as f:
         map_data = json.load(f)
@@ -77,53 +84,45 @@ def add_lighting_to_dat_file(file_path, beat_times):
     # Clear existing lighting events
     map_data["_events"] = []
 
-    # Generate lighting events from beat timings
-    lighting_events = generate_lighting_events_from_beats(beat_times, max_effect_duration, min_effect_duration, lighting_types, colors)
+    # Get the start time for the atmospheric lighting events
+    start_time = 0  # Start at the beginning of the song
 
-    # Add the new lighting events to the _events section of the map
+    # Generate and add atmospheric lighting events
+    atmospheric_events = generate_atmospheric_lighting_events(start_time, atmospheric_lighting_duration, lighting_types, colors)
+    map_data["_events"].extend(atmospheric_events)
+    
+    # Generate lighting events from note timings
+    lighting_events = generate_lighting_events_from_notes(note_times, max_effect_duration, lighting_types, colors)
     map_data["_events"].extend(lighting_events)
 
     # Save the updated .dat file
     with open(file_path, 'w') as f:
         json.dump(map_data, f, indent=4)
 
-    print(f"Existing lighting events cleared and new music-synced events added to {file_path}")
+    print(f"Existing lighting events cleared and new music-synced events with atmospheric intro added to {file_path}")
 
-# Main function to iterate over all song folders and process audio and .dat files
+# Main function to iterate over all song folders and process .dat files
 def process_all_songs(root_folder):
     for folder_name in os.listdir(root_folder):
         folder_path = os.path.join(root_folder, folder_name)
         if os.path.isdir(folder_path):
-            # Check for either song.ogg or song.egg audio file in the folder
-            audio_file_path = None
-            if os.path.exists(os.path.join(folder_path, "song.ogg")):
-                audio_file_path = os.path.join(folder_path, "song.ogg")
-            elif os.path.exists(os.path.join(folder_path, "song.egg")):
-                audio_file_path = os.path.join(folder_path, "song.egg")
-            
-            if audio_file_path:
-                print(f"Processing audio file: {audio_file_path}")
-                # Extract beat times from the audio file
-                beat_times = extract_beats_from_audio(audio_file_path)
-                
-                # Check for difficulty .dat files in the song folder
-                difficulty_files = {
-                    "Normal": os.path.join(folder_path, "Normal.dat"),
-                    "Hard": os.path.join(folder_path, "Hard.dat"),
-                    "Expert": os.path.join(folder_path, "Expert.dat"),
-                    "ExpertPlus": os.path.join(folder_path, "ExpertPlus.dat")
-                }
+            # Check for difficulty .dat files in the song folder
+            difficulty_files = {
+                "Normal": os.path.join(folder_path, "Normal.dat"),
+                "Hard": os.path.join(folder_path, "Hard.dat"),
+                "Expert": os.path.join(folder_path, "Expert.dat"),
+                "ExpertPlus": os.path.join(folder_path, "ExpertPlus.dat")
+            }
 
-                # Process each difficulty file
-                for difficulty, file_path in difficulty_files.items():
-                    if os.path.exists(file_path):
-                        add_lighting_to_dat_file(file_path, beat_times)
-                    else:
-                        print(f"File {file_path} not found, skipping...")
-            else:
-                print(f"No audio file found in {folder_path}, skipping...")
+            # Process each difficulty file
+            for difficulty, file_path in difficulty_files.items():
+                if os.path.exists(file_path):
+                    note_times = extract_note_times_from_dat(file_path)
+                    add_lighting_to_dat_file(file_path, note_times)
+                else:
+                    print(f"File {file_path} not found, skipping...")
 
 # Run the script on all song folders in the root directory
 process_all_songs(root_folder)
 
-print("Music-synced dynamic lighting events added to all available song difficulty files in the root folder!")
+print("Music-synced dynamic lighting events with atmospheric intro added to all available song difficulty files in the root folder!")
