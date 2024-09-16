@@ -8,34 +8,51 @@ import numpy as np
 root_folder = "."  # Change "." to the path of your root folder if not running in the same directory
 
 # Configurable parameters for lighting dynamics
-max_effect_duration = 2  # Maximum duration for lighting effects (in beats)
+max_effect_duration = 1.5  # Max duration for lighting effects (in beats)
+min_effect_duration = 0.1  # Min duration to ensure lights don't get stuck
 lighting_types = [0, 1, 2, 3, 4]  # Light types: Back Laser, Ring Light, etc.
-colors = [1, 2, 3, 4, 5]  # Example colors: Different intensities or colors
-effects = [0.5, 1.0, 1.5]  # Effects: Fade, Flash, etc.
+colors = [1, 2, 3, 4, 5]  # Colors: Different intensities or colors
+effects = [0.5, 1.0]  # Effects: Fade, Flash
 
 # Function to generate lighting events based on beat timings
-def generate_lighting_events_from_beats(beat_times, max_effect_duration, types, colors, effects):
+def generate_lighting_events_from_beats(beat_times, max_effect_duration, min_effect_duration, types, colors):
     events = []
     
+    previous_time = -1  # Track the previous event time to avoid overlapping
+
     for time in beat_times:
-        # Randomly select lighting type, color, and effect
+        if previous_time != -1 and time - previous_time < min_effect_duration:
+            # Skip event if it's too close to the previous one
+            continue
+        
+        # Randomly select lighting type and color
         light_type = random.choice(types)
         color = random.choice(colors)
-        effect_duration = random.uniform(0.1, max_effect_duration)  # Random duration between 0.1 and max_effect_duration
-        
-        # Create the event
-        event = {
+
+        # Create the "on" event
+        event_on = {
             "_time": time,
             "_type": light_type,
             "_value": color,
-            "_floatValue": effect_duration
+            # Remove "_floatValue" to avoid potential conflicts
         }
-        # Add the event to the list
-        events.append(event)
+        
+        events.append(event_on)
+
+        # Create a "reset" or "off" event to ensure lights turn off
+        reset_time = time + random.uniform(min_effect_duration, max_effect_duration)
+        event_off = {
+            "_time": reset_time,
+            "_type": light_type,
+            "_value": 0  # Value 0 to turn off the light
+        }
+        
+        events.append(event_off)
+        previous_time = time
     
     return events
 
-# Function to extract beat times from the audio file using librosa
+# Function to extract beat times from the song.ogg or song.egg file using librosa
 def extract_beats_from_audio(audio_file):
     # Load the audio file
     y, sr = librosa.load(audio_file, sr=None)
@@ -61,7 +78,7 @@ def add_lighting_to_dat_file(file_path, beat_times):
     map_data["_events"] = []
 
     # Generate lighting events from beat timings
-    lighting_events = generate_lighting_events_from_beats(beat_times, max_effect_duration, lighting_types, colors, effects)
+    lighting_events = generate_lighting_events_from_beats(beat_times, max_effect_duration, min_effect_duration, lighting_types, colors)
 
     # Add the new lighting events to the _events section of the map
     map_data["_events"].extend(lighting_events)
